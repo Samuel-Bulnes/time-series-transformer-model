@@ -1,0 +1,299 @@
+---
+title: "Transformer model for Time Series Classification"
+format: html
+execute: 
+  eval: false
+---
+# Cover Page
+
+**Report Title:** Time Series Classification with Transformer model 
+
+**Project Topic:** Time Series 
+
+**Full Name:** Samuel Bulnes
+
+**Submission Date:** October 3, 2025
+
+
+# Executive Summary
+The objective of this project was to use a Transformer-based neural network for time series classification.
+The selected dataset, **FordA**, from the UCR Time Series Repository, contains multivariate sequences of length 500 that belong to one of two classes.
+
+The approach was to implement a Transformer Encoder architecture using **Keras (TensorFlow)**. The model takes univariate time series as input, applies multi-head self-attention, normalization, and feed-forward layers to the input. A pooling layer is then used to create a summary of each sequence, and a dense classifier is used to generate the final prediction.
+
+The model is trained using the Adam optimizer and cross-entropy loss, achieving an accuracy on the validation set of around **83%**.
+The results show that Transformers are a viable alternative to recurrent neural networks for learning from sequential data, and have potential use cases beyond NLP.
+
+
+# Model Architecture Overview
+## Page 3: Model Architecture Overview
+
+### Pseudocode of TensorFlow Architecture
+
+#### Input Shape
+- Dimensions: `(samples, timesteps, features)`  
+- Example for FordA dataset: `(number_of_examples, 500, 1)`  
+- Data type: `float32`  
+
+#### Model Type
+- **Functional API** (used instead of Sequential for flexibility).  
+
+#### Pretrained Model
+- **No** pretrained model used.  
+- Architecture built **from scratch** for time series classification.  
+
+#### Layer Descriptions
+1. **Input Layer**  
+   - Shape: `(timesteps, features)`  
+   - Accepts normalized sequences.  
+
+2. **Transformer Encoder Block(s)**  
+   - MultiHeadAttention: learns relationships across timesteps.  
+   - Dropout: reduces overfitting.  
+   - LayerNormalization: stabilizes training.  
+   - Conv1D Feed-Forward: expands and projects features.  
+   - Residual Connections: preserve information across layers.  
+
+3. **GlobalAveragePooling1D**  
+   - Aggregates sequence into a fixed-length vector.  
+
+4. **Dense Layer(s) (MLP head)**  
+   - Fully connected layer(s) with ReLU activation.  
+   - Dropout applied for regularization.  
+
+5. **Output Layer**  
+   - Dense layer with Softmax activation.  
+   - Outputs class probabilities.  
+
+#### Activation Functions
+- ReLU → in Dense and Conv1D layers.  
+- Softmax → in final classification layer.  
+
+#### Compile Settings
+- Loss function: `sparse_categorical_crossentropy`  
+- Optimizer: `Adam(learning_rate=1e-4)`  
+- Metrics: `sparse_categorical_accuracy`  
+
+#### Task Type
+- **Classification** (binary: class 0 vs class 1).  
+
+
+# Main Body
+
+## Before run. Install libraries and load your ai-env
+Installed the necessary libraries (numpy, keras, tensorflow, matplotlib) to prepare the workspace for running the time series classification project, then run use_virtualenv to load the env
+
+## FIRST Run
+```{r}
+library(reticulate)
+
+# Use your virtual env
+use_virtualenv("C:/ai-env", required = TRUE)
+
+#Check if is using the rigth env
+py_config()
+
+```
+
+
+## Deliverable 1: Environment setup and library installation.
+The dataset used comes from the UCR/UCI repository, which is a collection of time series databases. Each row contains a sequence: the first column indicates the class to which it belongs, and the other columns are the numerical values at different time steps. 
+
+Set up the Python environment in RStudio and installed the necessary libraries (numpy, keras, tensorflow, matplotlib) to prepare the workspace for running the time series classification project.
+
+## Deliverable 2: Data loading and preprocessing.
+Before training, the data must be preprocessed. First, it is normalized so that all values are on the same scale and the model is not biased toward large values. Then, the format is adjusted so that each sample is represented as a sequence of time steps with one or more features
+
+Loaded the FordA dataset (train and test) from the provided repository, reshaped the data to match the model input format, randomized the training samples, and converted all class labels from -1 to 0 to prepare the dataset for training.
+ 
+## SECOND Run
+```{python}
+
+#Import libraries,
+import numpy as np
+import keras
+from keras import layers
+
+
+# Function to read UCR time series datasets
+def readucr(filename):
+    data = np.loadtxt(filename, delimiter="\t") # load a tab-separated file (TSV)
+    y = data[:, 0] # first column = labels (classes)
+    x = data[:, 1:]  # remaining columns = features (time series values)
+    return x, y.astype(int) # return features and integer labels
+
+#Deliverable 2: Data loading and preprocessing.
+# Base URL where the FordA dataset is hosted
+root_url = "https://raw.githubusercontent.com/hfawaz/cd-diagram/master/FordA/"
+
+# Load training and testing sets
+x_train, y_train = readucr(root_url + "FordA_TRAIN.tsv")
+x_test, y_test = readucr(root_url + "FordA_TEST.tsv")
+
+# Reshape input data into 3D tensors: (samples, timesteps, features)
+# Keras expects sequential data in this format
+x_train = x_train.reshape((x_train.shape[0], x_train.shape[1], 1))
+x_test = x_test.reshape((x_test.shape[0], x_test.shape[1], 1))
+
+n_classes = len(np.unique(y_train))
+
+
+# Shuffle training data to avoid any ordering bias
+idx = np.random.permutation(len(x_train))
+x_train = x_train[idx]
+y_train = y_train[idx]
+
+# Replace -1 labels with 0
+# The dataset uses {-1, 1} as class labels,
+# but we want {0, 1} for easier use in Keras
+y_train[y_train == -1] = 0
+y_test[y_test == -1] = 0
+
+```
+
+The core mechanism of the Transformer is self-attention. Each point in the sequence can attend to other relevant points, even if they are far apart in time. For example, in an ECG signal, a peak may depend on values that occurred many steps earlier. With multi-head attention, the model analyzes different relationships in parallel, providing a richer understanding of the patterns
+
+## THIRD Run
+```{python}
+
+# This implementation applies Layer Normalization before the residual connection 
+# to improve training stability by producing better-behaved gradients and often 
+# eliminating the need for learning rate warm-up.
+
+def transformer_encoder(inputs, head_size, num_heads, ff_dim, dropout=0):
+    # Attention and Normalization
+    x = layers.MultiHeadAttention(
+        key_dim=head_size, num_heads=num_heads, dropout=dropout
+    )(inputs, inputs)
+    x = layers.Dropout(dropout)(x)
+    x = layers.LayerNormalization(epsilon=1e-6)(x)
+    res = x + inputs
+
+    # Feed Forward Part
+    x = layers.Conv1D(filters=ff_dim, kernel_size=1, activation="relu")(res)
+    x = layers.Dropout(dropout)(x)
+    x = layers.Conv1D(filters=inputs.shape[-1], kernel_size=1)(x)
+    x = layers.LayerNormalization(epsilon=1e-6)(x)
+    return x + res
+  
+```
+ 
+## Deliverable 3: Model architecture design.
+Defined the Transformer-based neural network architecture for time series classification. The model included multiple Transformer encoder blocks with multi-head attention, normalization, feed-forward layers, and dropout for regularization. A global average pooling layer and dense layers were added to generate final class predictions.
+
+The model begins by taking the time series as input, then applies embeddings and positional encoding. Next, the sequence passes through multiple Transformer blocks that extract the most important patterns. Finally, a pooling layer summarizes the sequence, and a dense softmax layer outputs the probability for each possible class
+
+## FOURTH RUN
+```{python}
+
+def build_model(
+    input_shape,              # shape of input data 
+    head_size,                # size of each attention head in the transformer
+    num_heads,                # number of attention heads
+    ff_dim,                   # hidden layer size inside the feed-forward part of transformer
+    num_transformer_blocks,   # how many transformer blocks to stack
+    mlp_units,                # list with sizes of dense layers after transformers
+    dropout=0,                # dropout rate inside the transformer blocks
+    mlp_dropout=0,            # dropout rate in the dense layers (MLP head)
+):
+  
+    # Define the input layer
+    inputs = keras.Input(shape=input_shape)
+    x = inputs
+    
+    # Add a stack of transformer encoder blocks
+    for _ in range(num_transformer_blocks):
+        x = transformer_encoder(x, head_size, num_heads, ff_dim, dropout)
+
+    # Global average pooling over the time dimension
+    x = layers.GlobalAveragePooling1D(data_format="channels_last")(x)
+    
+    # Add fully connected layers (MLP head) with dropout for regularization
+    for dim in mlp_units:
+        x = layers.Dense(dim, activation="relu")(x)
+        x = layers.Dropout(mlp_dropout)(x)
+        
+    # Final output layer
+    outputs = layers.Dense(n_classes, activation="softmax")(x)
+    
+    # Build and return the Keras model
+    return keras.Model(inputs, outputs)
+  
+```
+
+## Deliverable 4: Model training and validation.
+Trained the Transformer model on the preprocessed FordA dataset using Adam optimizer and sparse categorical cross-entropy loss. Applied early stopping to prevent overfitting and monitored both training and validation accuracy. Visualized the training history with Matplotlib to evaluate performance improvements across epochs.
+
+The model is trained using the Adam optimizer, cross-entropy loss, and accuracy as the main metric. During training, the parameters are updated to minimize error and improve performance. The graphs show how accuracy increases while loss decreases across epochs, indicating successful learning.
+
+## FIFTH RUN
+```{python}
+
+# Get the shape of each input
+input_shape = x_train.shape[1:]
+
+# Build the transformer model using the previous build_model function
+model = build_model(
+    input_shape,
+    head_size=256,              # size of each attention head
+    num_heads=4,                # number of attention heads
+    ff_dim=4,                   # hidden units in feed-forward part of transformer
+    num_transformer_blocks=4,   # stack 4 transformer blocks
+    mlp_units=[128],            # MLP head with one dense layer of 128 units
+    mlp_dropout=0.4,            # 40% dropout in MLP layers
+    dropout=0.25,               # 25% dropout in transformer blocks
+)
+
+# Compile the model
+model.compile(
+    loss="sparse_categorical_crossentropy",
+    optimizer=keras.optimizers.Adam(learning_rate=1e-4),
+    metrics=["sparse_categorical_accuracy"],
+)
+
+# Print model summary: shows layers, output shapes, and number of parameters
+model.summary()
+
+# Define callbacks
+# EarlyStopping: stop training if validation loss doesn't improve for 10 epochs
+callbacks = [keras.callbacks.EarlyStopping(patience=10, restore_best_weights=True)]
+
+
+# Train the model
+model.fit(
+    x_train,
+    y_train,
+    validation_split=0.2,
+    epochs=150,
+    batch_size=64,
+    callbacks=callbacks,
+)
+
+# Evaluate the model on the test set
+model.evaluate(x_test, y_test, verbose=1)
+```
+
+## Deliverable 5: Model evaluation and performance visualization.
+Evaluated the trained model on the FordA test set, reporting accuracy and loss metrics. Generated visualizations such as confusion matrices, classification reports, and accuracy/loss curves to assess predictive performance. Summarized results to highlight the model’s ability to detect patterns and anomalies in time series data.
+
+After training, the model achieves strong accuracy in classifying time series. This means it successfully learned to identify distinctive patterns for each class. The results confirm that Transformers are powerful tools for analyzing sequential data beyond natural language.
+
+## SIXTH RUN
+```{python}
+# Evaluate the model on the test set
+model.evaluate(x_test, y_test, verbose=1)
+```
+
+# Model Architecture Overview
+The purpose of this project was to implement and train a Transformer model for time series classification using the FordA dataset. The trained model was able to learn temporal dependencies and achieved satisfactory accuracy on both the training and test sets, demonstrating the potential of attention-based architectures for sequential data.
+
+The main challenges encountered during the project included data preprocessing and label encoding, as well as tuning the model's hyperparameters. Addressing these challenges helped to gain a better understanding of how to format time series data for machine learning models and how to adapt Transformer architectures to domains outside of natural language processing.
+
+The project also provided insights into the need for careful regularization and hyperparameter selection when working with complex deep learning models. Future work could involve experimenting with deeper stacks of Transformer layers, hybrid architectures that combine convolutional neural networks (CNNs) with Transformers, and evaluating the model's performance on other real-world time series datasets. Possible applications could include predictive maintenance in industrial systems, anomaly detection in health monitoring, and financial time series forecasting.
+
+In summary, this project helped to reinforce both theoretical understanding and practical skills in applying modern deep learning techniques to the problem of time series classification.
+
+# References
+Bagnall, A., Dau, H. A., Lines, J., Flynn, M., Large, J., Bostrom, A., … Keogh, E. (2018). The UEA multivariate time series classification archive, 2018. ArXiv. https://arxiv.org/abs/1811.00075
+
+Chollet, F., et al. (2015). Keras: The Python deep learning API. GitHub repository. https://keras.io/
