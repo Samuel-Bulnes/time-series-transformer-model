@@ -1,1 +1,35 @@
-ÿþ
+ï»¿# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ai-env/
+ENV/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# RStudio
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+*.Rproj
+
+# Data files
+*.tsv
+*.csv
+
+# Model files
+*.h5
+*.hdf5
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
