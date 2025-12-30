@@ -1,4 +1,4 @@
-Time Series Classification with Transformer Model
+Time Series Classification with Transformer Model 
 This project implements a Transformer-based neural network for time series classification using the FordA dataset from the UCR Time Series Repository.
 Pipeline Overview
 Time Series Data → Preprocessing → Transformer Encoder → Classification → Prediction
