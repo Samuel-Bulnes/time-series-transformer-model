@@ -1,5 +1,6 @@
 ---
 title: "Transformer model for Time Series Classification"
+author: "Samuel Bulnes"
 format: html
 execute: 
   eval: false
